@@ -1,0 +1,514 @@
+import React, { useEffect, useState } from 'react';
+import Icon from '@mdi/react';
+import { mdiMagnify } from '@mdi/js';
+import TableMain from '../components/TableMain';
+import { ServerAPI } from '../common/ServerAPI';
+import { useAppStateAPI } from '../common/AppStateAPI';
+import { getUserToken } from '../common/Utilities'
+import dayjs, { Dayjs } from 'dayjs';
+import { PageMappings } from '../common/PageMappings';
+import { DateFilterType, PageLinks, ProjectConfig } from '../common/Constants';
+import { DatePicker } from "antd";
+import { RiCalendarLine } from "react-icons/ri";
+import toast from 'react-hot-toast';
+import { TableViewMappings } from '../common/TableViewMappings';
+import { useNavigate } from 'react-router';
+
+const { RangePicker } = DatePicker;
+
+const CommonListing: React.FC<{ page: string }> = ({ page }) => {
+    const [showOption, setShowoption] = useState(false);
+    const [showFormDialog, setShowFormDialog] = useState(false);
+    const { addProcessingRequests, reduceProcessingRequests } = useAppStateAPI();
+    const [pageMappingDetail, setPageMappingDetail] = useState<PageMappings.PageDetail>();
+    const [tableRows, setTableRows] = useState<any[]>();
+    const [tableDetail, setTableDetail] = useState<TableViewMappings.TableDetail>();
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [searchString, setSearchString] = useState('');
+    const [selectedAdditionalFilter, setSelectedAdditionalFilter] = useState('');
+    const [dateRangeSet, setDateRangeSet] = useState(false);
+    const [dateRangeFrom, setDateRangeFrom] = useState('');
+    const [dateRangeTo, setDateRangeTo] = useState('');
+    const [dayJSRange, setDayJSRange] = useState<[Dayjs?, Dayjs?]>([]);
+    const [dateMonthSet, setDateMonthSet] = useState(false);
+    const [dateMonth, setDateMonth] = useState('');
+    const [reloadData, setReloadData] = useState<boolean>(false);
+    const [showDetailDialog, setShowDetailDialog] = useState(false);
+    const [dataID, setDataID] = useState(0);
+    const [copyID, setCopyID] = useState(0);
+    // const [selectedTab, setSelectedTab] = React.useState(0);
+    const [pageInitialized, setPageInitialized] = useState(false);
+    const navigate = useNavigate();
+    const [activeTabButton, setActiveTabButton] = useState('');
+
+    const handleTabClick = (value: string) => {
+        setActiveTabButton(value);
+    };
+
+
+    const frameAPIParams = (pagination?: boolean) => {
+        let params: { [k: string]: any } = {};
+        if (pageMappingDetail) {
+            if (!pageMappingDetail.noPagination) {
+                params['pagenumber'] = pagination ? currentPage : 1;
+                params['limit'] = pagination ? ProjectConfig.EntriesPerPage : 100000;
+            }
+            //params['status'] = '1';
+            if (dateRangeSet) {
+                params['from_date'] = dateRangeFrom;
+                params['to_date'] = dateRangeTo;
+            }
+            if (dateMonthSet) {
+                params['month'] = dateMonth;
+            }
+            if (searchString) {
+                params["search_text"] = searchString;
+            }
+            if (pageMappingDetail.listAddlParams !== undefined) {
+                pageMappingDetail.listAddlParams.forEach(addlParam => params[addlParam.param_name] = addlParam.param_value)
+            }
+        }
+        return params;
+    }
+
+    var searchTimeout: any = null;
+
+    const loadTableData = () => {
+        if (pageMappingDetail) {
+            setPageInitialized(true);
+            const params = frameAPIParams(true);
+            if (pageMappingDetail.additionalFilter !== undefined && selectedAdditionalFilter) {
+                params[pageMappingDetail.additionalFilter.paramName] = selectedAdditionalFilter;
+            }
+            addProcessingRequests();
+            ServerAPI.executeAPI(pageMappingDetail.listEndpoint, ServerAPI.APIMethod.GET, true, null, params).then(response => {
+                if (response !== undefined) {
+                    if (pageMappingDetail.listResponseParam !== undefined && response[pageMappingDetail.listResponseParam] !== undefined) {
+                        setTableRows(response[pageMappingDetail.listResponseParam]);
+                    } else if (response !== undefined) {
+                        setTableRows(response);
+                    } else if (response['status'] === false && response['message'] !== undefined) {
+                        setTableRows([]);
+                        toast.error(response['message']);
+                    } else {
+                        setTableRows([]);
+                        toast.error("Something Went Wrong");
+                    }
+                    if (response['totalpage'] !== undefined) {
+                        setTotalPages(response['totalpage']);
+                    }
+                } else {
+                    setTableRows([]);
+                    toast.error("Something Went Wrong");
+                }
+            }).finally(() => {
+                reduceProcessingRequests();
+            });
+        } else {
+            setTableRows([]);
+        }
+    }
+
+    const deleteEntry = (params: { [k: string]: any }, id?: number) => {
+        if (pageMappingDetail && pageMappingDetail.deleteEndpoint) {
+            //let params: { [k: string]: any } = {};
+            addProcessingRequests();
+            ServerAPI.executeAPI(`${pageMappingDetail.deleteEndpoint}/${id}`, ServerAPI.APIMethod.DELETE, true, null,).then(response => {
+                if (response !== undefined && response.message) {
+                    toast.success(response.message);
+                    setReloadData(true);
+                } else {
+                    alert("Something Went Wrong");
+                }
+            }).finally(() => {
+                reduceProcessingRequests();
+            });
+        }
+    }
+
+    useEffect(() => {
+        const pageDetail = PageMappings.getPageDetail(page);
+        setReloadData(false);
+        if (pageDetail) {
+            setPageInitialized(false);
+            setTableDetail(TableViewMappings.getPageTableDetail(pageDetail.pageLink));
+            setPageMappingDetail(pageDetail);
+            setSearchString('');
+            setCurrentPage(1);
+            setTableRows([]);
+            setTotalPages(1);
+            setTimeout(() => setReloadData(true), 100);
+        }
+        setActiveTabButton(page)
+    }, [page]);
+
+    useEffect(() => {
+        if (searchTimeout) clearTimeout(searchTimeout);
+        if (pageInitialized) {
+            searchTimeout = setTimeout(() => {
+                setCurrentPage(1);
+                setReloadData(true);
+            }, 500);
+        }
+    }, [searchString]);
+
+    useEffect(() => {
+        if (pageMappingDetail !== undefined && pageMappingDetail?.additionalFilter !== undefined) {
+            setCurrentPage(1);
+            setReloadData(true);
+        }
+    }, [selectedAdditionalFilter]);
+
+    useEffect(() => {
+        console.log('Reload Data', reloadData);
+        if (reloadData) {
+            loadTableData();
+        }
+        const loadTimer = setTimeout(() => setReloadData(false), 100);
+        return () => clearTimeout(loadTimer);
+    }, [reloadData]);
+
+    useEffect(() => {
+        setReloadData(true);
+    }, [currentPage]);
+
+    useEffect(() => {
+        if (dateRangeFrom && dateRangeTo) {
+            setDayJSRange([dayjs(dateRangeFrom), dayjs(dateRangeTo)])
+        }
+    }, [dateRangeFrom, dateRangeTo])
+
+
+    const handleRangeChange = (value: any) => {
+        if (value) {
+            setDateRangeFrom(dayjs(value[0]).format('YYYY-MM-DD'));
+            setDateRangeTo(dayjs(value[1]).format('YYYY-MM-DD'));
+            setDateRangeSet(true);
+            setReloadData(true);
+        } else {
+            setDateRangeSet(false);
+            setReloadData(true);
+        }
+    }
+
+    const handleMonthChange = (value: any) => {
+        if (value) {
+            setDateMonth(dayjs(value).format('MM-YY'));
+            setDateMonthSet(true);
+            setReloadData(true);
+        } else {
+            setDateMonth('');
+            setDateMonthSet(false);
+            setReloadData(true);
+        }
+    }
+
+    if (pageMappingDetail != undefined) {
+        return (
+            <>
+                <div className="card-body-inner pr-0 d-flex flex-column">
+                    <div className='col-6 p-0'>
+                        <h4 className="header-title mt-0 mb-0">{pageMappingDetail.title}</h4>
+                    </div>
+                    {pageMappingDetail.additionalFilter !== undefined && (
+                        <div className='col-6 p-0 mt-4'>
+                            <div className="additional-filter">
+                                <>
+                                    {pageMappingDetail.additionalFilterTitle && <p className='additional-option-title mb-1'>Select {pageMappingDetail.additionalFilterTitle}</p>}
+                                    <select value={selectedAdditionalFilter} className="form-control" onChange={e => setSelectedAdditionalFilter(e.target.value)}>
+                                        {pageMappingDetail.additionalFilter.optional === true && (
+                                            <option value="">Select {pageMappingDetail.additionalFilter.label}</option>
+                                        )}
+                                        {pageMappingDetail.additionalFilter.options.map((option, index) => (<option value={option.value} key={index}>{option.label}</option>))}
+                                    </select>
+                                </>
+                            </div>
+                        </div>
+                    )}
+                    {(pageMappingDetail.componentSubText || pageMappingDetail.dateFilterType) && <div className='row mr-0 ml-0 mb-2 py-2 pl-0 d-flex align-items-center w-100 mt-2'>
+                        <div className='col-6 pl-0'>
+                            {pageMappingDetail.componentSubText && <p className='additional-option-title mb-1'>Select {pageMappingDetail.componentSubText}</p>}
+                        </div>
+                        <div className='col-6 d-flex justify-content-end p-0'>
+                            {pageMappingDetail.dateFilterType && pageMappingDetail.dateFilterType === DateFilterType.RangePicker && (
+                                <RangePicker
+                                    value={dateRangeSet ? dayJSRange as [Dayjs, Dayjs] : undefined}
+                                    onChange={handleRangeChange}
+                                    allowClear={pageMappingDetail.dateFilterRequired ? false : true}
+                                    suffixIcon={<RiCalendarLine className="remix-icon hp-text-color-black-100" />}
+                                    defaultValue={pageMappingDetail.dateFilterRequired ? [dayjs().startOf('month'), dayjs()] : undefined}
+                                />
+
+                            )}
+                            {pageMappingDetail.dateFilterType && pageMappingDetail.dateFilterType === DateFilterType.MonthPicker && (
+                                <DatePicker
+                                    value={dateMonthSet ? dayjs(dateMonth, 'MM-YY') : undefined}
+                                    onChange={handleMonthChange}
+                                    allowClear={pageMappingDetail.dateFilterRequired ? false : true}
+                                    defaultValue={pageMappingDetail.dateFilterRequired ? dayjs(dayjs().format('YYYY/MM'), 'YYYY/MM') : undefined}
+                                    format={'YYYY/MM'}
+                                    picker="month" />
+                            )}
+                        </div>
+                    </div>}
+
+                    {pageMappingDetail.tabs !== undefined && (<div className='toggle-buttons mt-3'>
+                        {pageMappingDetail.tabs.map((tab, index) => (
+                            <button
+                                key={index}
+                                className={`toggle-button ${activeTabButton === tab.tabLink ? 'active' : ''}`}
+                                onClick={(e) => { e.preventDefault(); handleTabClick(tab.tabLink); navigate(tab.tabLink) }}
+                            >
+                                {tab.tabLabel}
+                            </button>
+                        ))}
+                    </div>)}
+
+                    {(pageMappingDetail.searchBox || pageMappingDetail.exportDataBtn || pageMappingDetail.addAvailable || pageMappingDetail.uploadEmployeeDataBtn || pageMappingDetail.editBtn) && (
+                        <div className='row mt-1 mr-0 ml-0 mb-2 py-2 w-100 pl-0' style={{ height: "50px" }}>
+                            {pageMappingDetail.searchBox &&
+                                <div className='col-6 d-flex justify-content-start p-0 ' style={{ gap: "10px" }}>
+                                    <> <input type="text" className='search-option w-50' placeholder='Search By Keywords ' />
+                                        <Icon path={mdiMagnify} size={1} className='search-icon' />
+                                    </>
+                                </div>
+                            }
+                            <div className={pageMappingDetail.searchBox ? 'col-6 d-flex justify-content-end p-0 employee-btn' : 'col-12 d-flex justify-content-end p-0 employee-btn'} style={{ minHeight: "50px", minWidth: "93px" }}>
+                                {pageMappingDetail.exportDataBtn && (
+                                    <button className='toggle-button active h-100' style={{ minHeight: "50px", minWidth: "93px" }}>{pageMappingDetail.exportDataBtn}</button>
+                                )}
+                                {pageMappingDetail.addAvailable && (
+                                    <button className='toggle-button active h-100' style={{ minHeight: "50px", minWidth: "93px" }} onClick={() => { setShowFormDialog(true); setDataID(0); setCopyID(0); }}> <img src="/assets/svg/add-btn.svg" alt="" style={{ marginTop: '-3px' }} /> Add {pageMappingDetail.titleSingular}</button>
+                                )}
+                                {pageMappingDetail.addEmployeeBtn && (
+                                    <button className='toggle-button active h-100' style={{ minHeight: "50px", minWidth: "93px" }} onClick={() => navigate(PageLinks.EMPLOYER_PERSONAL_DETAILS)}>
+                                        <img src="/assets/svg/add-btn.svg" alt="" style={{ marginTop: '-3px' }} /> {pageMappingDetail.addEmployeeBtn}
+                                    </button>
+                                )}
+                                <div style={{ gap: "10px", display: "flex", alignItems: "flex-end" }}>
+                                    {pageMappingDetail.uploadEmployeeDataBtn && (
+                                        <button className='toggle-button active h-100' style={{ minHeight: "50px", minWidth: "93px" }} onClick={() => { setShowFormDialog(true); setDataID(0); setCopyID(0); }}>{pageMappingDetail.uploadEmployeeDataBtn} <img src="/assets/svg/upload-data.svg" alt="" /></button>
+                                    )}
+
+                                    {pageMappingDetail.uploadEmployeeDataBtn && (
+                                        <a href="#"> <img src="/assets/images/excel-icon.png" alt="" style={{ width: "25px", height: "25px", margin: "10px 0" }} /> </a>
+                                    )}
+                                </div>
+                                {pageMappingDetail.editBtn && (
+                                    <button className='toggle-button active h-100' style={{ minHeight: "50px", minWidth: "93px" }}>{pageMappingDetail.editBtn}</button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+
+                    {pageMappingDetail.additionalFilterSelect && <div className='filter-option d-flex gap-2 p-2 mt-2'>
+                        <button><img src="/assets/svg/filter-circle.svg" alt="circle-icon" className='mr-1 mt-0' height={'14px'} /> Filter By</button>
+                        <div> <button className='select' onClick={() => setShowoption(!showOption)}>Employee <i className={`mdi ${showOption ? 'mdi-chevron-up' : 'mdi-chevron-down'}`}></i></button>
+                            {showOption && <div className='option'>
+                                <p className='mb-0 pt-2 pb-2' onClick={() => setShowoption(false)}>Leave Request</p><hr className='mt-1 mb-1' />
+                                <p className='mb-0 pt-2 pb-2' onClick={() => setShowoption(false)}>Leave Balance</p><hr className='mt-1 mb-1' />
+                                <p className='mb-0 pt-2 pb-2' onClick={() => setShowoption(false)}>Leave Credit</p><hr className='mt-1 mb-1' />
+                            </div>}</div>
+                        <div> <button className='select'>Date <i className={`mdi ${showOption ? 'mdi-chevron-up' : 'mdi-chevron-down'}`}></i></button></div>
+                        <div> <button className='select'>Period <i className={`mdi ${showOption ? 'mdi-chevron-up' : 'mdi-chevron-down'}`}></i></button></div>
+                        <div> <button className='select'>Leave Type<i className={`mdi ${showOption ? 'mdi-chevron-up' : 'mdi-chevron-down'}`}></i></button></div>
+                    </div>}
+                    {page === PageLinks.EMPLOYER_EMPLOYEE_PAYROLL && <div className='my-3'>
+                        <p className='additional-option-title'>Employee Details</p>
+                        <div className='form-box p-2' style={{ width: "80vw" }}>
+                            <div className='d-flex justify-content-between para'>
+                                <div><p className='dummy-para'>First Name</p>
+                                    <p className='dummy-value'>Dinesh</p>
+                                </div>
+                                <div><p className='dummy-para'>Last Name</p>
+                                    <p className='dummy-value'>J</p>
+                                </div>
+                                <div><p className='dummy-para'>Company Name</p>
+                                    <p className='dummy-value'>BES</p>
+                                </div>
+                                <div><p className='dummy-para'>Employee Code</p>
+                                    <p className='dummy-value'>4</p>
+                                </div>
+                                <div><p className='dummy-para'>Mobile Number</p>
+                                    <p className='dummy-value'>899</p>
+                                </div>
+                            </div>
+                            <div className='d-flex justify-content-between para'>
+                                <div><p className='dummy-para'>Official Email</p>
+                                    <p className='dummy-value'>Dinesh</p>
+                                </div>
+                                <div><p className='dummy-para'>Gender</p>
+                                    <p className='dummy-value'>J</p>
+                                </div>
+                                <div><p className='dummy-para'>Date Of Joining</p>
+                                    <p className='dummy-value'>BES</p>
+                                </div>
+                                <div><p className='dummy-para'>Tax Identification Number</p>
+                                    <p className='dummy-value'>4</p>
+                                </div>
+                                <div><p className='dummy-para'>Work Location</p>
+                                    <p className='dummy-value'>899</p>
+                                </div>
+                            </div>
+                            <div className='d-flex justify-content-between para'>
+                                <div><p className='dummy-para'>department</p>
+                                    <p className='dummy-value'>Dinesh</p>
+                                </div>
+                                <div><p className='dummy-para'>Designation</p>
+                                    <p className='dummy-value'>J</p>
+                                </div>
+                                <div><p className='dummy-para'>Superior Employee</p>
+                                    <p className='dummy-value'>BES</p>
+                                </div>
+                                <div><p className='dummy-para'>Annual CTC</p>
+                                    <p className='dummy-value'>4</p>
+                                </div>
+                                <div><p className='dummy-para'>Monthly Pay</p>
+                                    <p className='dummy-value'>899</p>
+                                </div>
+                            </div>
+                            <div className='d-flex justify-content-between para'>
+                                <div><p className='dummy-para'>Attendance Policy</p>
+                                    <p className='dummy-value'>Dinesh</p>
+                                </div>
+                                <div><p className='dummy-para'>Salary Structure</p>
+                                    <p className='dummy-value'>J</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>}
+
+
+                    {/* {tableDetail !== undefined && (
+                        <>
+
+                            <TableMain
+                                tableDetail={tableDetail}
+                                tableRows={tableRows ? tableRows : []}
+                                totalPages={totalPages}
+                                currentPage={currentPage}
+                                setCurrentPage={setCurrentPage}
+                                pageMappingDetail={pageMappingDetail}
+                                setDataID={setDataID}
+                                setCopyID={setCopyID}
+                                setShowForm={setShowFormDialog}
+                                setShowDetail={setShowDetailDialog}
+                                deleteTableEntry={deleteEntry}
+                                reloadData={() => setReloadData(true)}
+                            />
+
+                        </>
+                    )} */}
+                    {pageMappingDetail.personalDetailsForm ? (
+                        <></>
+                    ) : (tableDetail !== undefined && (
+                        <>
+                            <TableMain
+                                tableDetail={tableDetail}
+                                tableRows={tableRows ? tableRows : []}
+                                totalPages={totalPages}
+                                currentPage={currentPage}
+                                setCurrentPage={setCurrentPage}
+                                pageMappingDetail={pageMappingDetail}
+                                setDataID={setDataID}
+                                setCopyID={setCopyID}
+                                setShowForm={setShowFormDialog}
+                                setShowDetail={setShowDetailDialog}
+                                deleteTableEntry={deleteEntry}
+                                reloadData={() => setReloadData(true)}
+                            />
+                        </>
+                    ))}
+
+                    {pageMappingDetail.personalDetailsForm !== undefined && (
+                        React.createElement(
+                            pageMappingDetail.personalDetailsForm,
+                            {
+                                reloadData: () => setReloadData(true),
+                                id: dataID,
+                                copyID: copyID
+                            }
+                        )
+                    )}
+
+                    {showFormDialog === true && pageMappingDetail.form !== undefined && (
+                        React.createElement(
+                            pageMappingDetail.form,
+                            {
+                                showDialog: showFormDialog,
+                                closeDialog: () => { setShowFormDialog(false) },
+                                reloadData: () => setReloadData(true),
+                                id: dataID,
+                                copyID: copyID
+                            }
+                        )
+                    )}
+                    {showDetailDialog === true && pageMappingDetail.detailView !== undefined && !pageMappingDetail.detailViewIsForm && (
+                        React.createElement(
+                            pageMappingDetail.detailView,
+                            {
+                                showDialog: showDetailDialog,
+                                closeDialog: () => { setShowDetailDialog(false) },
+                                reloadData: () => setReloadData(true),
+                                id: dataID,
+                            }
+                        )
+                    )}
+                    {showDetailDialog === true && pageMappingDetail.form !== undefined && pageMappingDetail.detailViewIsForm && (
+                        React.createElement(
+                            pageMappingDetail.form,
+                            {
+                                showDialog: showDetailDialog,
+                                closeDialog: () => { setShowDetailDialog(false) },
+                                reloadData: () => setReloadData(true),
+                                id: dataID,
+                                detailView: true,
+                            }
+                        )
+                    )}
+                </div>
+            </>
+        )
+    } else {
+        return (
+            <div />
+        )
+    }
+
+};
+
+export default CommonListing;
+
+// return (
+//     <>
+//         <div className='toggle-buttons'>
+//             <button className={`toggle-button ${activeButton === 'Holiday Types' ? 'active' : ''}`} onClick={() => handleButtonClick('Holiday Types')}>Holiday Types</button>
+//             <button className={`toggle-button ${activeButton === 'Holiday Groups' ? 'active' : ''}`} onClick={() => handleButtonClick('Holiday Groups')}>Holiday Groups</button>
+//             <button className={`toggle-button ${activeButton === 'Holidays' ? 'active' : ''}`} onClick={() => handleButtonClick('Holidays')}>Holidays</button>
+//         </div>
+//         <div className='row mt-4 mr-0 ml-0 mb-2 p-2'>
+//             <div className='col-6 d-flex justify-content-start p-0'>
+//                 <input type="text" className='search-option w-50' placeholder='Search' />
+//                 <Icon path={mdiMagnify} size={1} className='search-icon' />
+//             </div>
+//             <div className='col-6 d-flex justify-content-end p-0'>
+//                 <button className='toggle-button active h-100' onClick={() => setShowFormDialog(true)}><i className="mdi mdi-plus"></i> Add Holiday</button>
+//             </div>
+//         </div>
+//         <div className='filter-option d-flex gap-2 pt-2 pb-2'>
+//             <button><img src="/assets/svg/filter-circle.svg" alt="circle-icon" className='mr-1 mt-0' height={'14px'} /> Filter By</button>
+//             <div> <button className='select' onClick={() => setShowoption(!showOption)}>Leave <i className={`mdi ${showOption ? 'mdi-chevron-up' : 'mdi-chevron-down'}`}></i></button>
+//                 {showOption && <div className='option'>
+//                     <p className='mb-0 pt-2 pb-2' onClick={() => setShowoption(false)}>Leave Request</p><hr className='mt-1 mb-1' />
+//                     <p className='mb-0 pt-2 pb-2' onClick={() => setShowoption(false)}>Leave Balance</p><hr className='mt-1 mb-1' />
+//                     <p className='mb-0 pt-2 pb-2' onClick={() => setShowoption(false)}>Leave Credit</p><hr className='mt-1 mb-1' />
+//                 </div>}</div>
+//         </div>
+//         {/* <TableMain /> */}
+//         {showFormDialog && (
+//             <EmployersStaticFormDialog showDialog={showFormDialog} closeDialog={() => setShowFormDialog(false)} />
+//         )}
+//     </>
+// );

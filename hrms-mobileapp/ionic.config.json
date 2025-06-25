@@ -1,0 +1,7 @@
+{
+  "name": "HRMS Employee Portal",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}

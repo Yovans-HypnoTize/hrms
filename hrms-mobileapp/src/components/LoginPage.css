@@ -1,0 +1,72 @@
+.login-page {
+  height: 100%;
+  background-color: #0e7ad5;
+  background-image: url("/assets/svg/shapes.svg");
+  object-fit: cover;
+  background-repeat: no-repeat;
+    display: flex;
+    flex-direction: column;
+    /* align-items: center; */
+  }
+
+  .logo-container {
+    height: 60%;
+    /* height: 450px; */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .forgot-password-logo-container {
+    height: 65%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .login-form-wrapper {
+    height: 100%;
+    background-color: #fff;
+    padding: 2rem 2rem 2rem 2rem;
+    border-top-left-radius: 2rem;
+    border-top-right-radius: 2rem;
+  }
+  
+  .top-image {
+    height: 350px;
+    width: 100%;
+    object-fit: cover;
+  }
+  
+  .login-container {
+    background-color: #fff;
+    padding: 24px;
+    margin: 20px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+  
+  .welcome-text {
+    text-align: center;
+    font-size: 24px;
+    margin-bottom: 20px;
+    color: #000;
+  }
+  
+  .custom-item {
+    --background: #fff;
+    --border-color: #000;
+    --color: #000;
+    margin-bottom: 16px;
+  }
+  
+  .forgot-link {
+    text-align: right;
+    font-size: 14px;
+    color: #007bff;
+    margin-bottom: 20px;
+    cursor: pointer;
+  }
+  
